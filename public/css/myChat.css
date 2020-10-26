@@ -1,0 +1,196 @@
+
+#loginPopup {
+	display: none; /* Hidden by default */
+	position: fixed; /* Stay in place */
+	z-index: 1; /* Sit on top */
+	padding-top: 100px; /* Location of the box */
+	left: 0;
+	top: 0;
+	width: 100%; /* Full width */
+	height: 100%; /* Full height */
+	overflow: auto; /* Enable scroll if needed */
+	background-color: rgb(0,0,0); /* Fallback color */
+	background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+
+/* Style and fix the button on the page */
+.open-button {
+	background-color: transparent;
+	color: white;
+	border: none;
+	cursor: pointer;
+	float: right;
+}
+/* Hide the Popup form */
+.form-popup {
+	border: 2px solid #666;
+	z-index: 9;
+	max-width: 300px;
+	margin: 0 auto;
+}
+/* Styles for the form container */
+.form-container {
+	max-width: 300px;
+	padding: 20px;
+	background-color: #fff;
+}
+/* Full-width for input fields */
+.form-container input[type=text], .form-container input[type=password] {
+	width: 100%;
+	padding: 10px;
+	margin: 5px 0 22px 0;
+	border: none;
+	background: #eee;
+}
+/* When the inputs get focus, do something */
+.form-container input[type=text]:focus, .form-container input[type=password]:focus {
+	background-color: #ddd;
+	outline: none;
+}
+/* Style submit/login button */
+.form-container .btn {
+	background-color: #8ebf42;
+	color: #fff;
+	padding: 12px 20px;
+	border: none;
+	cursor: pointer;
+	width: 100%;
+	margin-bottom:10px;
+	opacity: 0.8;
+}
+/* Style cancel button */
+.form-container .cancel {
+	background-color: #cc0000;
+}
+/* Hover effects for buttons */
+.form-container .btn:hover, .open-button:hover {
+	opacity: 1;
+}
+
+#localVideo { 
+	width: 150px; 
+	height: 150px; 
+	position: absolute;
+ }
+   
+ #remoteVideo { 
+	width: 500px; 
+	height: 500px; 
+ }
+ video { 
+	background: black; 
+	border: 1px solid gray; 
+ }
+
+ #callPageAudio {
+	display: none; /* Hidden by default */
+	position: fixed; /* Stay in place */
+	z-index: 1; /* Sit on top */
+	padding-top: 70px; /* Location of the box */
+	left: 0;
+	top: 0;
+	width: 100%; /* Full width */
+	height: 100%; /* Full height */
+	overflow: auto; /* Enable scroll if needed */
+	background-color: rgb(0,0,0); /* Fallback color */
+	background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+#callPageVideo {
+	display: none; /* Hidden by default */
+	text-align: center;
+	position: fixed; /* Stay in place */
+	z-index: 1; /* Sit on top */
+	padding-top: 70px; /* Location of the box */
+	left: 0;
+	top: 0;
+	width: 100%; /* Full width */
+	height: 100%; /* Full height */
+	overflow: auto; /* Enable scroll if needed */
+	background-color: rgb(0,0,0); /* Fallback color */
+	background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+.wrap {
+	margin-top: 50px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+  }
+  .wrap .add-btn {
+	width: 155px;
+	height: 40px;
+	padding: 8px 20px;
+	background: white;
+	border: 1px solid #4b4f56;
+	border-radius: 5px;
+	cursor: pointer;
+  }
+  .wrap .add-btn:hover {
+	background: #e9ebee;
+  }
+  .wrap .add-btn .plus {
+	width: 16px;
+	height: 2px;
+	margin-top: 10px;
+	background: #4b4f56;
+	display: inline-block;
+	vertical-align: top;
+	transition: transform 0.5s;
+  }
+  .wrap .add-btn .plus:before {
+	margin: -7px 0 0 7px;
+	content: "";
+	position: absolute;
+	width: 2px;
+	height: 16px;
+	background: #4b4f56;
+	transition: margin 0.5s;
+  }
+  .wrap .add-btn .plus.tick {
+	transform: translateX(6px) rotate(-45deg);
+  }
+  .wrap .add-btn .plus.tick:before {
+	height: 8px;
+	margin: -7px 0 0 0;
+  }
+  .wrap .add-btn .text {
+	margin: 0 5px;
+	display: inline-block;
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, ".SFNSText-Regular", sans-serif;
+	line-height: 20px;
+	vertical-align: top;
+	color: #4b4f56;
+  }
+  .wrap .add-btn .text.move {
+	margin: 0 15px;
+  }
+  .wrap .add-btn .text > .add-text {
+	opacity: 1;
+	transition: opacity 0.5s;
+  }
+  .wrap .add-btn .text > .add-text.out {
+	opacity: 0;
+  }
+  .wrap .add-btn .user-wrap {
+	display: inline-block;
+  }
+  .wrap .add-btn .user-wrap > i {
+	font-size: 20px;
+	color: #4b4f56;
+  }
+  .wrap .add-btn .user-wrap > i.two {
+	position: absolute;
+	margin: -21px 0 0 12px;
+	opacity: 0;
+	transition: opacity 0.5s;
+  }
+  .wrap .add-btn .user-wrap > i.two.in {
+	opacity: 1;
+  }
+  .bg-custom-1 {
+	background-color: #85144b;
+  }
+  
+  .bg-custom-2 {
+  background-image: linear-gradient(15deg, #13547a 0%, #80d0c7 100%);
+  }
+  

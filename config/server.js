@@ -1,48 +1,3 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const router = express.Router();
-const app = express();
-const expressEjsLayout = require('express-ejs-layouts')
-const flash = require('connect-flash');
-const session = require('express-session');
-//const server = require("server");
-const passport = require("passport");
-const Chat = require("./models/Chat");
-const allChatStorage = [];
-
-//passport config:
-require('./config/passport')(passport)
-//mongoose
-mongoose.connect('mongodb://localhost/test',{useNewUrlParser: true, useUnifiedTopology : true})
-.then(() => console.log('Connected. Please visit http://localhost:3000'))
-.catch((err)=> console.log(err));
-
-//EJS
-app.set('view engine','ejs');
-app.use(expressEjsLayout);
-//BodyParser
-app.use(express.urlencoded({extended : false}));
-//express session
-app.use(session({
-    secret : 'secret',
-    resave : true,
-    saveUninitialized : true
-}));
-app.use(passport.initialize());
-app.use(passport.session());
-app.use(flash());
-app.use((req,res,next)=> {
-    res.locals.success_msg = req.flash('success_msg');
-    res.locals.error_msg = req.flash('error_msg');
-    res.locals.error  = req.flash('error');
-    next();
-    })
-    
-//Routes
-app.use('/',require('./routes/index'));
-app.use('/users',require('./routes/users'));
-app.use(express.static(__dirname + '/public'));
-
 //require our websocket library 
 var WebSocketServer = require('ws').Server;
  
@@ -224,38 +179,6 @@ wss.on('connection', function(connection) {
             }  
         
             break; 
-         
-         case "storeMessage": 
-            //console.log(data.myUserName, " talking to ", data.name); 
-            Chat.findOne({uniqueId : data.myUserName}).exec((err,chatExists)=>{
-               if(chatExists) //if the chat exists, then just add into that chat
-               {
-                  //save in db
-                  Chat.update(
-                     {uniqueId: data.myUserName},
-                     {$push: {chat : {id:data.msgName, message:data.msg}}}
-                  )
-                  .then((value)=>{
-                     //console.log("Successfully updated. check the db");
-                  })
-                  .catch(value=> console.log("Error while adding message to db"));
-               }
-               else //for new user
-               {
-                  //save in db
-                  var chatMessage = {id:data.msgName, message:data.msg};
-                  const newChat = new Chat({
-                     uniqueId: data.myUserName,
-                     chat : [chatMessage]
-                  });
-                  newChat.save()
-                  .then((value)=>{
-                     //console.log("Successfully saved. check the db");
-                  })
-                  .catch(value=> console.log("error while first time adding message to db"));
-               }
-            })
-            break; 
 
          default: 
             sendTo(connection, { 
@@ -270,7 +193,7 @@ wss.on('connection', function(connection) {
    //when user exits, for example closes a browser window 
    //this may help if we are still in "offer","answer" or "candidate" state 
    connection.on("close", function() { 
-      
+  
       if(connection.name) { 
       delete users[connection.name]; 
     
@@ -287,12 +210,13 @@ wss.on('connection', function(connection) {
             }  
          } 
       }
+      
    });  
+  
    connection.send("Hello world"); 
+  
 });  
 
 function sendTo(connection, message) { 
    connection.send(JSON.stringify(message)); 
 }
-
-app.listen(3000); 

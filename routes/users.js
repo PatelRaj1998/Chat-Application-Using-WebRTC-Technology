@@ -10,6 +10,9 @@ router.get('/login',(req,res)=>{
 router.get('/register',(req,res)=>{
     res.render('register')
     })
+router.get('/forgotPassword',(req,res)=>{
+    res.render('forgotPassword')
+    })
 //Register handle
 router.post('/login',(req,res,next)=>{
 passport.authenticate('local',{
@@ -50,37 +53,40 @@ passport.authenticate('local',{
             errors.push({msg: 'email already registered'});
             res.render('register',{errors,name,email,password,password2})  
            } else {
-            const newUser = new User({
-                name : name,
-                email : email,
-                password : password
+            User.count().then((count) => {
+                const newUser = new User({
+                    uniqueId : count,
+                    name : name,
+                    email : email,
+                    password : password
+                });
+            
+                //hash password
+                bcrypt.genSalt(10,(err,salt)=> 
+                bcrypt.hash(newUser.password,salt,
+                    (err,hash)=> {
+                        if(err) throw err;
+                            //save pass to hash
+                            newUser.password = hash;
+                        //save user
+                        newUser.save()
+                        .then((value)=>{
+                            console.log(value)
+                            req.flash('success_msg','You have now registered!');
+                            res.redirect('/users/login');
+                        })
+                        .catch(value=> console.log(value));
+                        
+                    }));
             });
-    
-            //hash password
-            bcrypt.genSalt(10,(err,salt)=> 
-            bcrypt.hash(newUser.password,salt,
-                (err,hash)=> {
-                    if(err) throw err;
-                        //save pass to hash
-                        newUser.password = hash;
-                    //save user
-                    newUser.save()
-                    .then((value)=>{
-                        console.log(value)
-                        req.flash('success_msg','You have now registered!');
-                        res.redirect('/users/login');
-                    })
-                    .catch(value=> console.log(value));
-                      
-                }));
-             }
+            }
        })
     }
     })
 //logout
 router.get('/logout',(req,res)=>{
 req.logout();
-req.flash('success_msg','Now logged out');
+req.flash('success_msg','Successfully logged out');
 res.redirect('/users/login'); 
 })
 module.exports  = router;
