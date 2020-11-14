@@ -28,6 +28,7 @@ body,html{
 	white-space: nowrap;
 }
 .msg_card_body{
+	height: 65%;
 	overflow-y: auto;
 }
 .card-header{
@@ -211,6 +212,17 @@ body,html{
 	width: 150px;
 	display: none;
 }
+.action_uploadFiles{
+	z-index: 1;
+	position: absolute;
+	padding: 15px 0;
+	/*background-color: rgba(0,0,0,0.5);*/
+	color: white;
+	border-radius: 15px;
+	width: 55px;
+	bottom: 80px;
+	display: none;
+}
 .action_menu ul{
 	list-style: none;
 	padding: 0;
@@ -229,6 +241,29 @@ body,html{
 	cursor: pointer;
 	background-color: rgba(0,0,0,0.2);
 }
+.action_uploadFiles ul{
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+.action_uploadFiles ul li{
+	width: 100%;
+	padding: 10px 15px;
+	margin-bottom: 5px;
+	display: inline-block;
+	background-color: #363b5a;
+	border-radius: 100%;
+}
+
+.action_uploadFiles ul li:hover{
+	cursor: pointer;
+}
+i.fa-image i.fa-file-alt {
+	display: inline-block;
+	border-radius: 60px;
+	box-shadow: 0px 0px 2px #888;
+	padding: 0.5em 0.6em;
+  }
 .action_menu_icons
 {
 	font-size: 25px;

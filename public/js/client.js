@@ -1,4 +1,8 @@
-var connection = new WebSocket('ws://localhost:9090'); //192.168.86.49
+var connection = new WebSocket('ws://localhost:3000'); 
+//var connection = new WebSocket('ws://192.168.0.244:3000'); 
+//var connection = new WebSocket('ws://35.169.240.181'); 
+//var connection = new WebSocket('wss://patelraj.ca'); 
+
 var name = "";
 
 var otherUsernameInput = document.querySelector('#otherUsernameInput'); 
@@ -6,6 +10,7 @@ var otherUsernameInput = document.querySelector('#otherUsernameInput');
 var connectionDictionary = [];
 
 var myConnection, connectedUser;
+var myRTCPeerConnection, myRTCPeerConnectionAudio, myRTCPeerConnectionVideo;
 
 var hangUpBtnAudio = document.querySelector('#hangUpBtnAudio');
 var hangUpBtnVideo = document.querySelector('#hangUpBtnVideo');
@@ -20,20 +25,18 @@ callPageVideo.style.display = "none";
 var audioStream; 
 var videoStream;
 
-sessionStorage.user = JSON.stringify({name: "John"});
 
-// sometime later
-let user = JSON.parse( sessionStorage.user );
-console.log(user);
-
-//on load of website
-function loginFunction(username) {
+//on load of website, this will be called from dashboard.ejs
+function loginFunction(username, personName, uId) {
    console.log("Logging in as " + username);
    name=username;
+   
    if(username.length > 0) { 
       send({ 
          type: "login", 
-         name: username 
+         name: username,
+         personName: personName,
+         uId: uId
       }); 
    };
 }
@@ -47,7 +50,7 @@ connection.onmessage = function (message) {
          onLogin(data.success); 
          break; 
       case "offer": 
-         onOffer(data.offer, data.name); 
+         onOffer(data.offer, data.name, data.personName, data.uId); 
          break; 
       case "offerVideo": 
          onOfferVideo(data.offer, data.name); 
@@ -56,65 +59,95 @@ connection.onmessage = function (message) {
          onOfferAudio(data.offer, data.name); 
          break; 
       case "answer":
-         onAnswer(data.answer); 
+         onAnswer(data.answer, data.personName, data.uId); 
+         break;
+      case "answerVideo":
+         onAnswerVideo(data.answer, data.personName, data.uId); 
+         break;
+      case "answerAudio":
+         onAnswerAudio(data.answer, data.personName, data.uId); 
          break;
       case "candidate": 
          onCandidate(data.candidate); 
          break;
+      case "candidateVideo": 
+         onCandidateVideo(data.candidate); 
+         break;
+      case "candidateAudio": 
+         onCandidateAudio(data.candidate); 
+         break;
       case "leaveAudio":
          handleLeaveAudio();
+         break;
       case "leaveVideo":
          handleLeaveVideo();
+         break;
+      case "error":
+         handelError(message);
+         break;
+      case "savedUser":
+         createWindowsForSavedUsers(message);
+         break;
+      case "userDetails":
+         userDetailsToMakeWindow(message, data.friends);
+         break;
       default: 
          break; 
    } 
 }; 
-
+function handelError(message)
+{   
+   let errorMessage = JSON.parse( message.data );
+   console.log(errorMessage.message); // add it as a red alert on connect to form window rather than alert
+   closeForm();
+}
 //when a user logs in 
 function onLogin(success) { 
-
    if (success === false) { 
       alert("oops...try a different username"); 
       //send the user back with an error message
    } else { 
-      //createRTCPeerConnectionObject(name);
+      createRTCPeerConnectionObject(name);
    } 
 };
-
 /*
    Messaging RTCPeerConnection
 */
-function createRTCPeerConnectionObject (otherUsername) {  
+function createRTCPeerConnectionObject (myName) {  
    //creating our RTCPeerConnection object 
    var configuration = { 
       "iceServers": [{ "url": "stun:stun.1.google.com:19302" }] 
    }; 
    
-   myConnection = new webkitRTCPeerConnection(configuration, { 
-      optional: [{RtpDataChannels: true}] 
+   myRTCPeerConnection = new webkitRTCPeerConnection(configuration, { 
+      //optional: [{RtpDataChannels: true}] 
    }); 
+  
+   connectedUser = myName;
+
+   connectionDictionary.push({
+      loginName: myName,
+      personName: "",
+      uId: "",
+      friend: "",
+      RTCDataChannel: "",
+      RTCPeerConnectionAudio: "",
+      RTCPeerConnectionVideo: ""
+   });
    
    //setup ice handling 
    //when the browser finds an ice candidate we send it to another peer 
-   myConnection.onicecandidate = function (event) { 
+   myRTCPeerConnection.onicecandidate = function (event) {
+      //console.log("waiting for iceCandidate");
       if (event.candidate) { 
          send({ 
             type: "candidate", 
             candidate: event.candidate 
          });
       } 
-   }; 
-   connectedUser = otherUsername;
-
-   connectionDictionary.push({
-      loginName: otherUsername,
-      RTCPeerConnection: myConnection,
-      RTCDataChannel: "",
-      RTCPeerConnectionAudio: "",
-      RTCPeerConnectionVideo: ""
-   });
-   openDataChannel(otherUsername);
+   };
 }
+
 /* 
    Audio call RTCPeerConnection object
 */
@@ -123,38 +156,33 @@ function createRTCPeerConnectionObjectForAudio(otherUsername, callback)
    callPageAudio.style.display = "block";
    //getting local audio stream 
    navigator.webkitGetUserMedia({ video: false, audio: true }, function (myStream) { 
-      audioStream = myStream; 
-      
-      //displaying local audio stream on the page
-      localAudio.srcObject = audioStream;
-      
       //using Google public stun server 
       var configuration = { 
          "iceServers": [{ "url": "stun:stun2.1.google.com:19302" }] 
       }; 
+      myRTCPeerConnectionAudio = new webkitRTCPeerConnection(configuration);
 
-      myConnection = new webkitRTCPeerConnection(configuration); 
-      
+      audioStream = myStream; 
+      //displaying local audio stream on the page
+      localAudio.srcObject = audioStream;
       // setup stream listening 
-      myConnection.addStream(audioStream); 
-      
+      myRTCPeerConnectionAudio.addStream(audioStream); 
       //when a remote user adds stream to the peer connection, we display it 
-      myConnection.onaddstream = function (e) { 
+      myRTCPeerConnectionAudio.onaddstream = function (e) { 
          //remoteAudio.src = window.URL.createObjectURL(e.stream); 
          remoteAudio.srcObject = e.stream;
-      }; 
-      
+      };  
       // Setup ice handling 
-      myConnection.onicecandidate = function (event) { 
+      myRTCPeerConnectionAudio.onicecandidate = function (event) { 
          if (event.candidate) { 
             send({ 
-               type: "candidate", 
+               type: "candidateAudio", 
             }); 
-         } 
+         }
       };
       connectedUser = otherUsername;
       var temp = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
-      temp.RTCPeerConnectionAudio = myConnection;
+      temp.RTCPeerConnectionAudio = myRTCPeerConnectionAudio;
       callback();
    }, function (error) { 
       console.log(error); 
@@ -169,40 +197,38 @@ function createRTCPeerConnectionObjectForVideo(otherUsername, callback)
    callPageVideo.style.display = "block";
    //getting local video stream 
    navigator.webkitGetUserMedia({ video: true, audio: true }, function (myStream) {
-      videoStream = myStream; 
-      
-      //displaying local video stream on the page 
-      //localVideo.src = window.URL.createObjectURL(videoStream);
-      //const mediaStream = new MediaStream();
-      localVideo.srcObject = videoStream;
-      
       //using Google public stun server 
       var configuration = { 
          "iceServers": [{ "url": "stun:stun2.1.google.com:19302" }]
       }; 
       
-      var myConnection = new webkitRTCPeerConnection(configuration); 
+      myRTCPeerConnectionVideo = new webkitRTCPeerConnection(configuration); 
 
+      videoStream = myStream; 
+
+      localVideo.srcObject = videoStream;
+      
       // setup stream listening 
-      myConnection.addStream(videoStream); 
+      myRTCPeerConnectionVideo.addStream(videoStream); 
+
       //when a remote user adds stream to the peer connection, we display it 
-      myConnection.onaddstream = function (e) { 
+      myRTCPeerConnectionVideo.onaddstream = function (e) { 
          //remoteVideo.src = window.URL.createObjectURL(e.stream); 
          remoteVideo.srcObject = e.stream;
       };
       
       // Setup ice handling 
-      myConnection.onicecandidate = function (event) { 
+      myRTCPeerConnectionVideo.onicecandidate = function (event) { 
          if (event.candidate) { 
             send({ 
-               type: "candidate", 
+               type: "candidateVideo", 
                candidate: event.candidate 
             }); 
          } 
-      };  
+      };
       connectedUser = otherUsername;
       var temp = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
-      temp.RTCPeerConnectionVideo = myConnection;
+      temp.RTCPeerConnectionVideo = myRTCPeerConnectionVideo;
       callback();
    }, function (error) { 
       console.log(error); 
@@ -220,7 +246,7 @@ connection.onerror = function (err) {
 };
  
 // Alias for sending messages in JSON format 
-function send( message) {
+function send(message) {
    if (connectedUser) { 
       message.name = connectedUser; 
    }
@@ -232,60 +258,107 @@ function send( message) {
 // Make the function wait until the connection is opened...
 function waitForSocketConnection(connection, callback){
    setTimeout(
-       function () {
-           if (connection.readyState === 1) {
-               //console.log("Connection is made")
-               if (callback != null){
-                   callback();
-               }
-           } else {
-               //console.log("wait for connection...")
-               waitForSocketConnection(connection, callback);
-           }
-
-       }, 5); // wait 5 milisecond for the connection...
+      function () {
+         if (connection.readyState === 1) {
+            //console.log("Connection is made")
+            if (callback != null){
+                  callback();
+            }
+         } else {
+            //console.log("wait for connection...")
+            waitForSocketConnection(connection, callback);
+         }
+      }, 5); // wait 5 milisecond for the connection...
 }
+function userDetailsToMakeWindow(userInfo, friends)
+{
+   console.log("coming here in userDetailsToMakeWindow");
+   var userInfo = JSON.parse(userInfo.data).message;
 
+   console.log(userInfo);
+   console.log(userInfo[0].friendsName);
+   console.log(userInfo[0].friendsUid);
+   if(userInfo != null){
+      //for(var i = 0; i < userInfo.length; i++) {
+         if(userInfo[0].friendsUserName != undefined){
+            var temp = connectionDictionary.find( ({ loginName }) => loginName === userInfo[0].friendsUserName);
+            if(!temp)
+            {
+               console.log("Adding to dictionary for " + userInfo[0].friendsUserName);
+               connectionDictionary.push({
+                  loginName: userInfo[0].friendsUserName,
+                  personName: userInfo[0].friendsName,
+                  uId: userInfo[0].friendsUid,
+                  friend: friends, //friends flag
+                  RTCDataChannel: "",
+                  RTCPeerConnectionAudio: "",
+                  RTCPeerConnectionVideo: ""
+               });
+            }
+            addMessagingWindowForParticularUser(userInfo[0].friendsUserName);
+            closeForm();
+         }
+      //}
+   }
+   else
+      console.log("No friends");
+}
 //setup a peer connection with another user 
-function establishConnection() {
-   var otherUsernameInput = document.getElementById('otherUsernameInput');
-   var otherUsername = otherUsernameInput.value;
+function establishConnection(otherUsername) {
    if(name==otherUsername){
       alert("Cannot establish connection to yourself");
       return;
    }
    else if(connectionDictionary.find(({ loginName }) => loginName === otherUsername))
    {
-      myConnection = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCPeerConnection;
+      otherUser = connectionDictionary.find(({ loginName }) => loginName === otherUsername)
+      myChatId = "chatOutput_" + otherUser.uId;
+      myNameChatId = "myLi_" + otherUser.uId;
+      element = document.getElementById(myChatId);
+      if (typeof(element) != 'undefined' && element != null) //the window already exists, so don't make new window
+      {
+         // Exists.
+         alert("Connection already exists");
+         closeForm();
+         document.getElementById(myNameChatId).click();
+         return;
+      }
    }
    else{
-      createRTCPeerConnectionObject(otherUsername);
-      myConnection = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCPeerConnection;
+      connectedUser = otherUsername;
+      //need to get required data from server and then add it in the dictionary
+      console.log(connectedUser);
+      send({ 
+         type: "getUserDetails", 
+         personUserName: connectedUser 
+      });
+      //below function will be called from userDetailsToMakeWindow
+      //addMessagingWindowForParticularUser(connectedUser);
    }
+}
+function createOfferToPeer(otherUsername)
+{
    connectedUser = otherUsername;
-   if (otherUsername.length > 0) { 
-      //make an offer 
-      myConnection.createOffer(function (offer) { 
+   openDataChannel(otherUsername, function(){
+      myRTCPeerConnection.createOffer(function (offer) { 
+         myRTCPeerConnection.setLocalDescription(offer);
          send({ 
             type: "offer", 
             offer: offer 
-         }); 
-			
-         myConnection.setLocalDescription(offer);
-         addMessagingWindowForParticularUser(otherUsername);
+         });
+         closeForm();    
       }, function (error) { 
          alert("An error has occurred."); 
-      }); 
-   }
-   closeForm(); 
+      });
+   });
 }
-
 function openForm() {
   document.getElementById("loginPopup").style.display="block";
   document.getElementById("otherUsernameInput").focus();
 }
    
 function closeForm() {
+   document.getElementById("otherUsernameInput").value="";
   document.getElementById("loginPopup").style.display= "none";
 }
 // When the user clicks anywhere outside of the modal, close it
@@ -297,51 +370,41 @@ window.onclick = function(event) {
 }
 
 //when somebody wants to message us 
-function onOffer(offer, name) {
-   //ask if u want to connect to other user who just requested ?
-   if(!connectionDictionary.find( ({ loginName }) => loginName === name))
-      createRTCPeerConnectionObject(name);
+function onOffer(offer, name, personName1, uId1) {
+   //console.log("coming to on offer");
    connectedUser = name; 
-   //console.log(connectionDictionary);
-   //console.log("name is: " + name);
-   var myConnection = connectionDictionary.find( ({ loginName }) => loginName === name).RTCPeerConnection;
-
-   myConnection.setRemoteDescription(new RTCSessionDescription(offer));
-	
-   myConnection.createAnswer(function (answer) { 
-      myConnection.setLocalDescription(answer); 
-		
-      send({ 
-         type: "answer", 
-         answer: answer 
-      }); 
-		
-   }, function (error) { 
-      alert("oops...error"); 
-   }); 
-}
-//when somebody wants to video call us 
-function onOfferVideo(offer, otherusername) {
-   if(!confirm(otherusername+" is calling you ...")) {
-      // Send a command to the other party (i.e. a response to the invitation) rejecting the offer.
-      //console.log("rejected");
-  } else {
-     //console.log("accepted");
-      createRTCPeerConnectionObjectForVideo(otherusername, function(){
-      var myConnection = connectionDictionary.find( ({ loginName }) => loginName === otherusername).RTCPeerConnectionVideo;
-
-      myConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      
-      myConnection.createAnswer(function (answer) { 
-         myConnection.setLocalDescription(answer); 
-         
+   myRTCPeerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+   openDataChannel(connectedUser, function(){
+      myRTCPeerConnection.createAnswer(function (answer) { 
+         myRTCPeerConnection.setLocalDescription(answer); 
          send({ 
             type: "answer", 
             answer: answer 
-         }); 
-         
+         });
       }, function (error) { 
          alert("oops...error"); 
+      });
+   });
+}
+//when somebody wants to video call us 
+function onOfferVideo(offer, otherusername) {
+   var otherPersonName = connectionDictionary.find( ({ loginName }) => loginName === otherusername).personName;
+
+   if(!confirm(otherPersonName+" is calling you ...")) {
+      // Send a command to the other party (i.e. a response to the invitation) rejecting the offer.
+      //console.log("rejected");
+  } else {
+      console.log("accepted");
+      createRTCPeerConnectionObjectForVideo(otherusername, function(){
+         myRTCPeerConnectionVideo.setRemoteDescription(new RTCSessionDescription(offer));         
+         myRTCPeerConnectionVideo.createAnswer(function (answer) { 
+            myRTCPeerConnectionVideo.setLocalDescription(answer);
+            send({ 
+               type: "answerVideo", 
+               answer: answer 
+            }); 
+         }, function (error) { 
+            alert("Error in offerVideo"); 
       }); 
    });
    }
@@ -349,63 +412,147 @@ function onOfferVideo(offer, otherusername) {
 
 //when somebody wants to audio call us 
 function onOfferAudio(offer, otherusername) {
-   if(!confirm(otherusername+" is calling you ...")) {
+   var otherPersonName = connectionDictionary.find( ({ loginName }) => loginName === otherusername).personName;
+   if(!confirm(otherPersonName+" is calling you ...")) {
       // Send a command to the other party (i.e. a response to the invitation) rejecting the offer.
       //console.log("rejected");
   } else {
       //console.log("accepted");
-      createRTCPeerConnectionObjectForAudio(otherusername, function(){
-         
-         var myConnection = connectionDictionary.find( ({ loginName }) => loginName === otherusername).RTCPeerConnectionAudio;
-
-         myConnection.setRemoteDescription(new RTCSessionDescription(offer));
-         
-         myConnection.createAnswer(function (answer) { 
-            myConnection.setLocalDescription(answer); 
-            
+      createRTCPeerConnectionObjectForAudio(otherusername, function(){         
+         myRTCPeerConnectionAudio.setRemoteDescription(new RTCSessionDescription(offer));
+         myRTCPeerConnectionAudio.createAnswer(function (answer) { 
+            myRTCPeerConnectionAudio.setLocalDescription(answer);
             send({ 
-               type: "answer", 
+               type: "answerAudio", 
                answer: answer 
-            }); 
-            
+            });
          }, function (error) { 
-            alert("oops...error"); 
+            alert("Error in offerAudio"); 
          });
       });
    }
 }
 
 //when another user answers to our offer 
-function onAnswer(answer) { 
-   myConnection.setRemoteDescription(new RTCSessionDescription(answer)); 
+function onAnswer(answer, personName1, uId1) {
+   myRTCPeerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+   //save the personName and uId to the correspondind connectedUser
+   //What is connected user ?
+   //var temp = connectionDictionary.find( ({ loginName }) => loginName === connectedUser);
+   //temp.personName = personName1;
+   //temp.uId = uId1;
+   //temp.friend = "true";
+   closeForm();
+}
+//when another user answers to our offer 
+function onAnswerVideo(answer, personName1, uId1) {
+   console.log("getting video answers");
+   myRTCPeerConnectionVideo.setRemoteDescription(new RTCSessionDescription(answer));
+}
+//when another user answers to our offer 
+function onAnswerAudio(answer, personName1, uId1) {
+   console.log("getting audio answers");
+   myRTCPeerConnectionAudio.setRemoteDescription(new RTCSessionDescription(answer));
+}
+//when we got ice candidate from another user 
+function onCandidate(candidate) {
+   myRTCPeerConnection.addIceCandidate(new RTCIceCandidate(candidate)); 
 }
 
 //when we got ice candidate from another user 
-function onCandidate(candidate) {
-   myConnection.addIceCandidate(new RTCIceCandidate(candidate)); 
+function onCandidateVideo(candidate) {
+    // Wait until the state of the socket is not ready and send the message when it is...
+    waitForCandidateVideo(myRTCPeerConnectionVideo, function(){
+      myRTCPeerConnectionVideo.addIceCandidate(new RTCIceCandidate(candidate)); 
+  });
+}
+// Make the function wait until the myRTCPeerConnectionVideo is created...
+function waitForCandidateVideo(myRTCPeerConnectionVideo, callback){
+   setTimeout(
+      function () {
+         if (myRTCPeerConnectionVideo != undefined) {
+            if (callback != null){
+                  callback();
+            }
+         } else {
+            waitForCandidateVideo(myRTCPeerConnectionVideo, callback);
+         }
+
+      }, 5); // wait 5 milisecond for the connection...
+}
+
+//when we got ice candidate from another user 
+function onCandidateAudio(candidate) {
+   // Wait until the state of the socket is not ready and send the message when it is...
+   waitForCandidateAudio(myRTCPeerConnectionAudio, function(){
+      myRTCPeerConnectionAudio.addIceCandidate(new RTCIceCandidate(candidate)); 
+  });
+}
+// Make the function wait until the myRTCPeerConnectionAudio is created...
+function waitForCandidateAudio(myRTCPeerConnectionAudio, callback){
+   setTimeout(
+      function () {
+         if (myRTCPeerConnectionAudio != undefined) {
+            if (callback != null){
+                  callback();
+            }
+         } else {
+            waitForCandidateAudio(myRTCPeerConnectionAudio, callback);
+         }
+
+      }, 5); // wait 5 milisecond for the connection...
 }
 
 //creating data channel 
-function openDataChannel(loginName1) { 
+function openDataChannel(otherUserName, callBackFunction) { 
    var dataChannelOptions = {
-      reliable:true 
+      reliable:true
    }; 
-   var temp = connectionDictionary.find( ({ loginName }) => loginName === loginName1);
-   dataChannel = temp.RTCPeerConnection.createDataChannel("myDataChannel", dataChannelOptions);
-   dataChannel.onerror = function (error) { 
-      console.log("Error:", error); 
-   };
+   var temp = connectionDictionary.find( ({ loginName }) => loginName === otherUserName);
+   if(temp == null)
+   {      
+      console.log("Adding to dictionary for " + otherUserName + " from openDataChannel function");
+      connectionDictionary.push({
+         loginName: otherUserName,
+         personName: "",
+         uId: "",
+         friend: "",
+         RTCDataChannel: "",
+         RTCPeerConnectionAudio: "",
+         RTCPeerConnectionVideo: ""
+      });
+   }
 
-   dataChannel.onmessage = function (event) {
-      addMessageToTextArea(event.data, "left", loginName1);
-   };
-
-   temp.RTCDataChannel = dataChannel;
-   //console.log(connectionDictionary);
+   try
+   {   
+      dataChannel = myRTCPeerConnection.createDataChannel("myDataChannel", {negotiated: true, id: 1}, dataChannelOptions);
+      dataChannel.binarytype = 'arraybuffer';
+      temp.RTCDataChannel = dataChannel;
+      //console.log("created data channel for " + otherUserName);
+      dataChannel.onerror = function (error) { 
+         console.log("Error in the dataChannel"); 
+         connectionDictionary.find(({ loginName }) => loginName === otherUserName).RTCDataChannel="";
+      };
+      dataChannel.onclose = function (event)
+      {
+         console.log("data channel closed");
+         connectionDictionary.find(({ loginName }) => loginName === otherUserName).RTCDataChannel="";
+      }
+      dataChannel.onmessage = function (event) {
+         addMessageToTextArea(event.data, "left", otherUserName);
+      };
+      temp.RTCDataChannel = dataChannel;
+   }
+   catch
+   {
+      console.log("error while creating datachannel");
+      temp.RTCDataChannel = "";
+   }
+   callBackFunction();
 }
 
 function addMessageToTextArea(msgInput, alignValue1, otherUsername){
-   
+   var otherUser = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
    //Dynamic messages adding with correct styling
    var div1 = document.createElement('div');
    var div2 = document.createElement('div');
@@ -427,7 +574,7 @@ function addMessageToTextArea(msgInput, alignValue1, otherUsername){
    div2.appendChild(span);
    div1.appendChild(div2);
 
-   var tempId = "chatOutput_" + otherUsername;
+   var tempId = "chatOutput_" + otherUser.uId;
    var finalDiv = document.getElementById(tempId);
    finalDiv.appendChild(div1);
    //myDiv.focus(); //will add it if needed
@@ -435,24 +582,12 @@ function addMessageToTextArea(msgInput, alignValue1, otherUsername){
    finalDiv.focus();
    
    storeMessageOnServer(msgInput, alignValue1, otherUsername);
-   /* //Inspired from below
-      <div class="d-flex justify-content-end mb-4">
-         <div class="msg_cotainer_send">
-            Ok, thank you have a good day
-            <span class="msg_time_send">9:10 AM, Today</span>
-         </div>
-      </div>
-      <div class="d-flex justify-content-start mb-4">
-         <div class="msg_cotainer">
-            Bye, see you
-            <span class="msg_time">9:12 AM, Today</span>
-         </div>
-      </div>
-   */
 }
 
 function createDetailsOfUser(otherUsername)
 {
+   var otherUser = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
+
    var div1 = document.createElement('div');
    div1.className="card";
 
@@ -470,7 +605,7 @@ function createDetailsOfUser(otherUsername)
    div1113.className = "video_cam";
 
    var div11111 = document.createElement('img');
-   div11111.src = ""; //need to fill with user profile pic
+   div11111.src = "/img/profilePics/m_" + otherUser.uId + ".png"; 
    div11111.className = "rounded-circle user_img";
 
    var div11112 = document.createElement('span');
@@ -479,9 +614,8 @@ function createDetailsOfUser(otherUsername)
    div1111.appendChild(div11111); //div1111 ready
    div1111.appendChild(div11112);
 
-
    var div11121 = document.createElement('span');
-   div11121.innerHTML = otherUsername;
+   div11121.innerHTML = otherUser.personName;
 
    div1112.appendChild(div11121); //div1112 ready
 
@@ -492,14 +626,13 @@ function createDetailsOfUser(otherUsername)
    div111311.addEventListener("click", function () { // video call functionality
          //create and find RTCPeerConnection to create an offer
          createRTCPeerConnectionObjectForVideo(otherUsername, function(){
-            myConnection = connectionDictionary.find( ({ loginName }) => loginName === otherUsername).RTCPeerConnectionVideo;
             // create an offer
-            myConnection.createOffer(function (offer) { 
+            myRTCPeerConnectionVideo.createOffer(function (offer) { 
+               myRTCPeerConnectionVideo.setLocalDescription(offer); 
                send({ 
                   type: "offerVideo", 
                   offer: offer 
                }); 
-               myConnection.setLocalDescription(offer); 
             }, function (error) { 
                alert("Error when creating an offer"); 
             });  
@@ -513,14 +646,13 @@ function createDetailsOfUser(otherUsername)
    div111321.addEventListener("click", function () {  //audio call functionality      
          //create and find RTCPeerConnection to create an offer
          createRTCPeerConnectionObjectForAudio(otherUsername, function(){
-            myConnection = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCPeerConnectionAudio;
             // create an offer 
-            myConnection.createOffer(function (offer) { 
+            myRTCPeerConnectionAudio.createOffer(function (offer) { 
+               myRTCPeerConnectionAudio.setLocalDescription(offer); 
                send({ 
                   type: "offerAudio", 
                   offer: offer 
-               });
-               myConnection.setLocalDescription(offer);  
+               }); 
             }, function (error) { 
                alert("Error when creating an offer"); 
             });
@@ -534,18 +666,11 @@ function createDetailsOfUser(otherUsername)
 
    var div1114 = document.createElement('span');
    div1114.className="action_menu_btn";
-   div1114.addEventListener('click', function(){ //action_menu btn cllick functionality
+   div1114.addEventListener('click', function(event){ //action_menu btn cllick functionality
+      event.stopPropagation();
       $('.action_menu').toggle();
    });
-   /*
-   <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownMenuLink" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                <img src="https://s3.eu-central-1.amazonaws.com/bootstrapbaymisc/blog/24_days_bootstrap/fox.jpg" width="40" height="40" class="rounded-circle">
-                </a>
-                <div class="dropdown-menu text-right" style="left: auto !important; right: 0 !important;" aria-labelledby="navbarDropdownMenuLink">
-                <a class="dropdown-item" href="#">Edit Profile</a>
-                <a class="dropdown-item" href="/users/logout">Log Out</a>
-                </div>
-   */
+
    var div11141 = document.createElement('i');
    div11141.className = "fas fa-ellipsis-v";
    div1114.appendChild(div11141); 
@@ -588,7 +713,7 @@ function createDetailsOfUser(otherUsername)
 
 
    var div12 = document.createElement('div');
-   var tempClassName12 = "chatOutput_" + otherUsername;
+   var tempClassName12 = "chatOutput_" + otherUser.uId;
    div12.className="card-body msg_card_body"; 
    div12.id = tempClassName12;//added chatOutput_userName as id
 
@@ -596,10 +721,16 @@ function createDetailsOfUser(otherUsername)
    div13.className="card-footer";
 
    var div131 = document.createElement('div');
-   div131.className="input-group";
+   div131.className="input-group emoji-picker-container";
 
    var div1311 = document.createElement('div');
    div1311.className="input-group-append";
+   div1311.addEventListener("click", function(event)
+   {
+      event.stopPropagation();
+      // sending files and attachments
+      $('.action_uploadFiles').toggle();
+   },false);
 
    var div13111 = document.createElement('span');
    div13111.className="input-group-text attach_btn";
@@ -607,36 +738,66 @@ function createDetailsOfUser(otherUsername)
    var div131111 = document.createElement('i');
    div131111.className = "fas fa-paperclip";
 
-   var div1312 = document.createElement('textarea');
-   div1312.className = "form-control type_msg";
-   div1312.placeholder="Type your message...";
-   div1312.addEventListener("keyup", function(event) {
-      if (event.keyCode === 13) {
-       event.preventDefault();
-       div1313.click();
-      }});
+      var uploadfiles = document.createElement('div');
+      uploadfiles.className="action_uploadFiles";
+      var uploadfiles_1 = document.createElement('ul');
 
+      var uploadfiles_11 = document.createElement('li');
+      var uploadfiles_111 = document.createElement('i');
+      uploadfiles_111.className="fas fa-image float-left action_menu_icons";
+      uploadfiles_1111 = document.createElement('input');
+      uploadfiles_1111.setAttribute("type", "file");
+      uploadfiles_1111.setAttribute("accept", "image/png, image/jpeg");
+      uploadfiles_1111.setAttribute("style", "display:none");
+      uploadfiles_1111.id = "imageToSend";
+      uploadfiles_11.addEventListener("click", function(){
+         uploadfiles_1111.click();
+      });
+      
+      var uploadfiles_12 = document.createElement('li');
+      var uploadfiles_121 = document.createElement('i');
+      uploadfiles_121.className="fas fa-file-alt float-left action_menu_icons";
+      uploadfiles_1211 = document.createElement('input');
+      uploadfiles_1211.setAttribute("type", "file");
+      uploadfiles_1211.setAttribute("accept", "");
+      uploadfiles_1211.setAttribute("style", "display:none");
+      uploadfiles_1211.id = "fileToSend";
+      uploadfiles_12.addEventListener("click", function(){
+         uploadfiles_1211.click();
+      });
+     
+      uploadfiles_12.appendChild(uploadfiles_1211);
+      uploadfiles_12.appendChild(uploadfiles_121);
+      uploadfiles_11.appendChild(uploadfiles_1111);
+      uploadfiles_11.appendChild(uploadfiles_111);
+      uploadfiles_1.appendChild(uploadfiles_11); //image
+      uploadfiles_1.appendChild(uploadfiles_12); //all type of files
+      uploadfiles.appendChild(uploadfiles_1);
+   
+   var div1312 = document.createElement('textarea');
+   div1312.id = otherUser.uId;
+   div1312.className = "form-control type_msg emoji-picker-container";
+   div1312.placeholder="Type your message ...";
+   div1312.setAttribute("data-emojiable", "true");
+   
    var div1313 = document.createElement('div');
    div1313.className="input-group-append";
+   div1313.id="sendMsg_"+ otherUser.uId;
 
    var div13131 = document.createElement('span');
    div13131.className="input-group-text send_btn";
 
    var div131311 = document.createElement('i');
    div131311.className = "fas fa-location-arrow";
-   
+
    div1313.addEventListener("click", function() //send message functionality
    {
-      if(div1312 != null && div1312 != "")
-      {
-         var messageToSend = div1312.value;
-         dataChannel = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel;
-         dataChannel.send(messageToSend);
-         addMessageToTextArea(messageToSend, "right", otherUsername);
-         div1312.value="";
-      }
+      // var messageToSend = div1312.value; //before
+      var messageToSend = div1312.nextSibling.innerHTML; //had to do next sibling because emoji changes this div
+      var refinedMessageToSend = messageToSend.split("<div><br></div>");
+      sendMessageToPeer(otherUsername, refinedMessageToSend[0]);
+      div1312.nextSibling.innerHTML = null;
    }, false);
-
 
    div13111.appendChild(div131111); //div 1311 ready
    div1311.appendChild(div13111);
@@ -648,23 +809,121 @@ function createDetailsOfUser(otherUsername)
    div131.appendChild(div1312); 
    div131.appendChild(div1313); 
 
+   div13.appendChild(uploadfiles);
    div13.appendChild(div131); //div 13 ready
 
 
    div1.appendChild(div11); //div 1 ready 
    div1.appendChild(div12);
    div1.appendChild(div13);
-   div1.id = "myDetailedLi_" + otherUsername;
+   div1.id = "myDetailedLi_" + otherUser.uId;
 
    var addDiv = document.getElementById('uniqueId');
    addDiv.appendChild(div1);
 
+   initialiseEmojis();
    showDetailsOfUser(otherUsername);
 }
+/*
+function imageUploadOnChange(otherUsername)
+{
+   console.log(otherUsername);
+   var otherUser = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
+   var inputMessage = document.getElementById(otherUser.uId);
+   
+   if (document.getElementById('fileToSend') !=null) 
+     {
+        console.log('it exists!');
+        var file = document.getElementById("fileToSend").files[0];
+        inputMessage.value += file.name;
+      }
+   else
+      console.log("it doesn't exist");
+}
+*/
+function sendMessageToPeer(otherUsername, messageToSend)
+{
+   dataChannel = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel;
+   if(!dataChannel)
+   {
+      console.log("Creating offer to peer");
+      createOfferToPeer(otherUsername);
+      dataChannel = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel;
+      waitForDataChannelToOpen(dataChannel, function(){
+         dataChannel.send(messageToSend);
+         addMessageToTextArea(messageToSend, "right", otherUsername);
+      });
+   }
+   else{
+      try{
+         dataChannel.send(messageToSend);
+      }
+      catch{
+         connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel="";
+         sendMessageToPeer(otherUsername, messageToSend);
+      }
+      addMessageToTextArea(messageToSend, "right", otherUsername);
+   }
+}
+/*
+function sendFileToPeer(otherUsername)
+{
+   dataChannel = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel;
+   var file = document.getElementById("fileToSend").files[0];
+   //var image = document.getElementById("imageToSend").files[0];
+   
+   var reader = new FileReader();
+ 
+   reader.onload = (function(file) {
+     if(reader.readyState == FileReader.DONE){
+       //sendChannel.send(file.target.result);
+         if(!dataChannel)
+         {
+            console.log("one");
+            console.log("Creating offer to peer");
+            createOfferToPeer(otherUsername);
+            dataChannel = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel;
+            waitForDataChannelToOpen(dataChannel, function(){
+               dataChannel.send(file.target.result);
+               addMessageToTextArea(file.name, "right", otherUsername);
+            });
+         }
+         else{
+            console.log("two");
+            try{
+               console.log("three");
+               dataChannel.send(file.target.result);
+            }
+            catch{
+               console.log("four");
+               connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel="";
+               sendMessageToPeer(otherUsername, file.target.result);
+            }
+            addMessageToTextArea(file.name, "right", otherUsername);
+         }
+      }
+   });
+   reader.readAsArrayBuffer(file);
+}
+*/
+// Make the function wait until the dataChannel is opened...
+function waitForDataChannelToOpen(dataChannel, callback){
+   setTimeout(
+       function () {
+           if (dataChannel.readyState == "open") {
+               if (callback != null){
+                   callback();
+               }
+           } else {
+               waitForDataChannelToOpen(dataChannel, callback);
+           }
+
+       }, 5); // wait 5 milisecond for the dataChannel...
+}
+
 function storeMessageOnServer(msgInput, alignValue1, otherUsername)
 {
    //console.log(otherUsername);
-   var myRtcPeerConnection = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCPeerConnection;
    var tempUsername;
    if(alignValue1 == "left")
    {
@@ -674,7 +933,7 @@ function storeMessageOnServer(msgInput, alignValue1, otherUsername)
    {
       tempUsername = name;
    }
-   myRtcPeerConnection.createOffer(function (offer) { 
+   myRTCPeerConnection.createOffer(function (offer) { 
       send({ 
          type: "storeMessage",
          myUserName: name,
@@ -687,8 +946,9 @@ function storeMessageOnServer(msgInput, alignValue1, otherUsername)
 }
 function showDetailsOfUser(otherUsername)
 {
+   var otherUser = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
    var c = document.getElementById("uniqueId");
-   var tempId = "myDetailedLi_" + otherUsername;
+   var tempId = "myDetailedLi_" + otherUser.uId;
 
    NodeList.prototype.forEach = Array.prototype.forEach
    var children = c.childNodes;
@@ -717,53 +977,65 @@ function showDetailsOfUser(otherUsername)
    else
       activeClass.className = activeClass.className.replace(/\bactive\b/g, ""); //remove the active 
 
-   var myLi = document.getElementById("myLi_" + otherUsername);
+   var myLi = document.getElementById("myLi_" + otherUser.uId);
    myLi.className+=" active"; //make it active
 }
 
 function addMessagingWindowForParticularUser(otherUsername){
-   //one time creation of all the elements
-   //creating the preview in preview window
-   var chatPreviewWindow = document.getElementById('chatPreviewWindow');
-   var myLi = document.createElement('li');
-   var div1 = document.createElement('div');
-   var div11 = document.createElement('div');
-   var div12 = document.createElement('div');
-   var span11 = document.createElement('span');
-   var span12 = document.createElement('span');
-   var img11 = document.createElement('img');
-   var p12 = document.createElement('p');
+   var otherUser = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
+   if(otherUser == null)
+      console.log("first save the data");
+   var element = document.getElementById("myLi_" + otherUser.uId);
+   //console.log("otherUser.uId: " + otherUser.uId);
+    //If it isn't "undefined" and it isn't "null", then it exists.
+    if(typeof(element) != 'undefined' && element != null){
+       console.log("Window already exists");
+        return;
+    } else{
+      //one time creation of all the elements
+      //creating the preview in preview window
+      var chatPreviewWindow = document.getElementById('chatPreviewWindow');
+      var myLi = document.createElement('li');
+      var div1 = document.createElement('div');
+      var div11 = document.createElement('div');
+      var div12 = document.createElement('div');
+      var span11 = document.createElement('span');
+      var span12 = document.createElement('span');
+      var img11 = document.createElement('img');
+      var p12 = document.createElement('p');
 
-   p12.innerHTML=otherUsername + " is online";
-   span12.innerHTML=otherUsername;
 
-   span11.className = "online_icon";
-   img11.src='';
-   img11.className = "rounded-circle user_img";
+      p12.innerHTML=otherUser.personName + " is online";
+      span12.innerHTML=otherUser.personName;
 
-   div11.className = "img_cont";
-   div12.className = "user_info";
+      span11.className = "online_icon";
+      img11.src="/img/profilePics/m_" + otherUser.uId + ".png";
+      img11.className = "rounded-circle user_img";
 
-   div1.className = "d-flex bd-highlight";
+      div11.className = "img_cont";
+      div12.className = "user_info";
 
-   var tempIdName = "myLi_" + otherUsername;
-   myLi.id = tempIdName;
+      div1.className = "d-flex bd-highlight";
 
-   div12.appendChild(span12);
-   div12.appendChild(p12);
-   div11.appendChild(span11);
-   div11.appendChild(img11);
-   div1.appendChild(div11);
-   div1.appendChild(div12);
-   myLi.appendChild(div1);
-   chatPreviewWindow.insertBefore(myLi, chatPreviewWindow.firstChild);
+      var tempIdName = "myLi_" + otherUser.uId;
+      myLi.id = tempIdName;
 
-   createDetailsOfUser(otherUsername); // add onclick to the div and show details
+      div12.appendChild(span12);
+      div12.appendChild(p12);
+      div11.appendChild(span11);
+      div11.appendChild(img11);
+      div1.appendChild(div11);
+      div1.appendChild(div12);
+      myLi.appendChild(div1);
+      chatPreviewWindow.insertBefore(myLi, chatPreviewWindow.firstChild);
 
-   myLi.addEventListener("click", function()
-   {
-      showDetailsOfUser(otherUsername);
-   }, false);
+      createDetailsOfUser(otherUsername); // add onclick to the div and show details
+
+      myLi.addEventListener("click", function()
+      {
+         showDetailsOfUser(otherUsername);
+      }, false);
+   }
 }
 
 //hang up Audio
@@ -774,17 +1046,16 @@ hangUpBtnAudio.addEventListener("click", function () {
    handleLeaveAudio();
 });
 function handleLeaveAudio() { 
-   myConnection = connectionDictionary.find(({ loginName }) => loginName === connectedUser).RTCPeerConnectionAudio;
    remoteAudio.srcObject = null;
    localAudio.srcObject = null;
    if (audioStream && audioStream.stop) {
-      onsole.log("stop audio");
+      console.log("stop audio");
       audioStream.stop();
     }
    audioStream = null;
-   myConnection.close(); //change this
-   myConnection.onicecandidate = null; 
-   myConnection.onaddstream = null;
+   myRTCPeerConnectionAudio.close();
+   myRTCPeerConnectionAudio.onicecandidate = null; 
+   myRTCPeerConnectionAudio.onaddstream = null;
    callPageAudio.style.display = "none";
 };
 
@@ -796,7 +1067,6 @@ hangUpBtnVideo.addEventListener("click", function () {
    handleLeaveVideo();  
 });
 function handleLeaveVideo() { 
-   myConnection = connectionDictionary.find(({ loginName }) => loginName === connectedUser).RTCPeerConnectionVideo;
    remoteVideo.srcObject = null; 
    localVideo.srcObject = null;
    if (videoStream && videoStream.stop) {
@@ -804,8 +1074,51 @@ function handleLeaveVideo() {
       videoStream.stop();
     }
    videoStream = null;
-   myConnection.close(); //change this
-   myConnection.onicecandidate = null; 
-   myConnection.onaddstream = null; 
+   myRTCPeerConnectionVideo.close();
+   myRTCPeerConnectionVideo.onicecandidate = null; 
+   myRTCPeerConnectionVideo.onaddstream = null; 
    callPageVideo.style.display = "none";
 };
+function initialiseEmojis() {
+   // Initializes and creates emoji set from sprite sheet
+   window.emojiPicker = new EmojiPicker({
+      emojiable_selector: '[data-emojiable=true]',
+      assetsPath: '/img/',
+      popupButtonClasses: 'fa fa-smile-o'
+     });
+     // Finds all elements with `emojiable_selector` and converts them to rich emoji input fields
+     // You may want to delay this step if you have dynamically created input fields that appear later in the loading process
+     // It can be called as many times as necessary; previously converted input fields will not be converted again
+     window.emojiPicker.discover();
+}
+function createWindowsForSavedUsers(friendList)
+{
+   console.log("createWindowsForSavedUsers called");
+   //retrieveDataFromSessionStorage();
+   //console.log(JSON.parse(friendList.data));
+   var myFriendList = JSON.parse(friendList.data).message;
+
+   if(myFriendList != null){
+      for(var i = 0; i < myFriendList.length; i++) {
+         if(myFriendList[i].friendsUserName != undefined){
+            var temp = connectionDictionary.find( ({ loginName }) => loginName === myFriendList[i].friendsUserName);
+            if(!temp)
+            {
+               console.log("Adding to dictionary for " + myFriendList[i].friendsUserName);
+               connectionDictionary.push({
+                  loginName: myFriendList[i].friendsUserName,
+                  personName: myFriendList[i].friendsName,
+                  uId: myFriendList[i].friendsUid,
+                  friend: true,
+                  RTCDataChannel: "",
+                  RTCPeerConnectionAudio: "",
+                  RTCPeerConnectionVideo: ""
+               });
+            }
+            addMessagingWindowForParticularUser(myFriendList[i].friendsUserName);
+         }
+      }
+   }
+   else
+      console.log("No friends");
+}

@@ -23,7 +23,6 @@
 }
 /* Hide the Popup form */
 .form-popup {
-	border: 2px solid #666;
 	z-index: 9;
 	max-width: 300px;
 	margin: 0 auto;
@@ -33,6 +32,7 @@
 	max-width: 300px;
 	padding: 20px;
 	background-color: #fff;
+	border-radius: 15px;
 }
 /* Full-width for input fields */
 .form-container input[type=text], .form-container input[type=password] {
