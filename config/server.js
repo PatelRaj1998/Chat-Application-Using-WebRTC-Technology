@@ -1,3 +1,5 @@
+const { update } = require("../models/chat");
+
 module.exports = function initiateServer(wss){
 
 //all connected to the server users 
@@ -79,7 +81,6 @@ wss.on('connection', function(connection) {
                      uId: uIds[connection.name]
                   }); 
                }
-               saveFriendIfNew(connection, data.name);
             }
             break;  
          
@@ -136,9 +137,7 @@ wss.on('connection', function(connection) {
                   personName: personNames[connection.name], /* Sending other persons name and uId to the client */ 
                   uId: uIds[connection.name]
                }); 
-            }
-            saveFriendIfNew(connection, data.name);
-            
+            }            
             break;  
          
          case "answerAudio":
@@ -154,9 +153,7 @@ wss.on('connection', function(connection) {
                   personName: personNames[connection.name], /* Sending other persons name and uId to the client */ 
                   uId: uIds[connection.name]
                }); 
-            }
-            saveFriendIfNew(connection, data.name);
-            
+            }            
             break;  
             
          case "answerVideo":
@@ -172,9 +169,7 @@ wss.on('connection', function(connection) {
                   personName: personNames[connection.name], /* Sending other persons name and uId to the client */ 
                   uId: uIds[connection.name]
                }); 
-            }
-            saveFriendIfNew(connection, data.name);
-            
+            }            
             break;  
             
          case "candidate": 
@@ -261,6 +256,14 @@ wss.on('connection', function(connection) {
             //var conn = users[data.name]; 
             sendUserDetials(connection, data.personUserName);
 
+            break;
+
+         case "saveFriend": 
+            //var conn = users[data.name];
+            console.log(connection.name); 
+            console.log(data.personUserName); 
+            saveFriendIfNew(connection.name, data.personUserName, true);
+
             break; 
 
          case "storeMessage": 
@@ -328,30 +331,69 @@ wss.on('connection', function(connection) {
    });  
    connection.send(JSON.stringify("Hello world")); 
 });  
-function saveFriendIfNew(connection, otherUserName)
+function saveFriendIfNew(connectionName, otherUserName, friendFlag)
 {
-   //console.log("connection: " + connection.name + " otherUserName: " + otherUserName);
-   FriendsList.findOne({userName : connection.name}).exec((err,friendListExists)=>{
+   FriendsList.findOne({userName : connectionName}).exec((err,friendListExists)=>{
       //console.log("friendListExists: " + friendListExists);
       if(friendListExists) //if the FriendsList exists, then just add into that FriendsList
       {
-         //save in db
-         FriendsList.update(
-            {userName: connection.name},
-            {$addToSet: {friends : {friendsUserName:otherUserName}}} //saving if unique by addToSet
-         )
-         .then((value)=>{
-            //console.log("Successfully updated. check the friendList in db");
+         //checking if that friend exist in the database, if it exists then just need to change the flag
+         FriendsList.findOne({ "userName": connectionName, "friends.friendsUserName": otherUserName },{ "friends.$": 1, _id : 0 }).exec((err, updateThis)=>{
+            if(updateThis)
+            {
+               FriendsList.updateOne(
+                  { "userName": connectionName, "friends.friendsUserName": otherUserName },
+                  {$set: { "friends.$.friend" : friendFlag }} //saving if unique by addToSet
+               )
+               .then((value)=>{
+                  //console.log("Successfully updated. check the friendList in db");
+               })
+               .catch(value=> console.log("Error while changing a flag from db"));
+               
+               /*
+               //removing
+               FriendsList.deleteOne(
+                  { "userName": connectionName, "friends.friendsUserName": otherUserName }
+               )
+               .then((value)=>{
+                  console.log("Successfully updated the flag. check the friendList in db");
+               })
+               .catch(value=> console.log("Error while changing a flag of a friend in db"));
+               */
+               //adding
+               /*
+               FriendsList.update(
+                  {userName: connectionName},
+                  {$addToSet: {friends : {friendsUserName:otherUserName, friend: friendFlag}}} //saving if unique by addToSet
+               )
+               .then((value)=>{
+                  //console.log("Successfully updated. check the friendList in db");
+               })
+               .catch(value=> console.log("Error while adding a friend to db"));
+               */
+            }
+            else{
+               //add it
+               FriendsList.update(
+                  {userName: connectionName},
+                  {$addToSet: {friends : {friendsUserName:otherUserName, friend: friendFlag}}} //saving if unique by addToSet
+               )
+               .then((value)=>{
+                  //console.log("Successfully updated. check the friendList in db");
+               })
+               .catch(value=> console.log("Error while adding a friend to db"));
+            }
          })
-         .catch(value=> console.log("Error while adding a friend to db"));
+         
       }
       else //for new user
       {
          //check if that friend exists. if it does then don't add 
          //save in db
-         var friendsUserName = {friendsUserName:otherUserName};
+         console.log("new user");
+         var friendsUserName = {friendsUserName:otherUserName, friend:friendFlag};
          const newFriend = new FriendsList({
-            userName: connection.name,
+            userName: connectionName,
             friends : [friendsUserName]
          });
          newFriend.save()
@@ -362,50 +404,94 @@ function saveFriendIfNew(connection, otherUserName)
       }
    })
 }
+function changeFriendFlag(connectionName, otherUserName, friend)
+{
+   FriendsList.findOne({userName : connectionName}).exec((err,friendListExists)=>{
+      //console.log("friendListExists: " + friendListExists);
+      if(friendListExists) //if the FriendsList exists, then replace it into that FriendsList
+      {
+         console.log(friendListExists);
+         //save in db
+         FriendsList.update(
+            {userName: connectionName},
+            {$set: {friends : {friendsUserName:otherUserName, friend: friend}}} //saving if unique by addToSet
+         )
+         .then((value)=>{
+            //console.log("Successfully updated. check the friendList in db");
+         })
+         .catch(value=> console.log("Error while adding a friend to db"));
+      }
+   })
+}
+function replaceByValue( field, oldvalue, newvalue ) {
+   for( var k = 0; k < json.length; ++k ) {
+       if( oldvalue == json[k][field] ) {
+           json[k][field] = newvalue ;
+       }
+   }
+   return json;
+}
 function sendUserFriendList(connection)
 {
    console.log("Sending friendList for " + connection.name);
-   FriendsList.findOne({userName : connection.name}).exec((err,friendListExists)=>{
-      if(friendListExists)
-      {
-         var finalResult = [];
+   //FriendsList.findOne({userName : connection.name}).exec((err,friendListExists)=>{
+      //if(friendListExists)
+      //{
          FriendsList.find({userName: connection.name})
          .then((result) =>{
-            sendUsersDetials(connection, result[0].friends);
+            if(result[0].friends.length > 0)
+               sendUsersDetials(connection, result[0].friends);
+            else
+            {
+               sendTo(connection, { 
+                  type: "savedUser",
+                  message: []
+               });
+            }
          })
          .catch(value=> console.log("error while fetching the data from db friendList"));
-      }
-      else{
+      //}
+      //else{
          //console.log("No friends yet");
-      }
-   });
+      //}
+   //});
 }
 //multi user
 function sendUsersDetials(connection, result)
 {
-   var finalResult = [];
-   result.forEach(function(item, i) {
-      var otherUsername = item.friendsUserName;
-      Users.find({email: otherUsername})
-      .then((result) =>{
-         //save the result into finalResult
-         //console.log(result[0].email);
-         var myObj = {"friendsUserName": result[0].email, 
-            "friendsName": result[0].name, 
-            "friendsUid": result[0].uniqueId};
-         finalResult.push(myObj);
-         if(i == result.length - 1)
-         {
-            if(connection != null) { 
-               sendTo(connection, { 
-                  type: "savedUser",
-                  message: finalResult
-               });
-            }
+   var finalResult = [];   
+   var resultLength = result.length;
+
+   var loop = function(result, i){
+      if(i < resultLength){
+         item = result[i];
+         var otherUsername = item.friendsUserName;
+         var friendsFlag = item.friend;
+         Users.find({email: otherUsername})
+         .then((res) =>{
+            //save the result into finalResult
+            var myObj = {
+               "friendsUserName": res[0].email, 
+               "friendsName": res[0].name, 
+               "friendsUid": res[0].uniqueId,
+               "friendsFlag": friendsFlag
+            };
+            finalResult.push(myObj);
+            loop(result, i+1);
+         })
+         .catch(value=> console.log("error while fetching the data for multiple people from db users"));
+      }
+      else
+      {
+         if(connection != null) { 
+            sendTo(connection, { 
+               type: "savedUser",
+               message: finalResult
+            });
          }
-      })
-      .catch(value=> console.log("error while fetching the data for multiple people from db users"));
-  });
+      }
+   }
+   loop(result, 0);
 }
 //single user
 function sendUserDetials(connection, personUserName)
@@ -416,12 +502,17 @@ function sendUserDetials(connection, personUserName)
    .then((result) =>{
       //save the result into finalResult
       //console.log(result[0].email);
-      var myObj = {"friendsUserName": personUserName, 
+      var myObj = {
+         "friendsUserName": personUserName, 
          "friendsName": result[0].name, 
-         "friendsUid": result[0].uniqueId};
+         "friendsUid": result[0].uniqueId
+      };
       finalResult.push(myObj);
       if(connection != null) { 
          console.log("sending user details to " + connection.name);
+         saveFriendIfNew(connection.name, personUserName, true);
+         saveFriendIfNew(personUserName, connection.name, false);
+
          sendTo(connection, { 
             type: "userDetails",
             message: finalResult,
@@ -429,7 +520,13 @@ function sendUserDetials(connection, personUserName)
          });
       }
    })
-   .catch(value=> console.log("error while fetching the data for single person from db users"));
+   .catch(value=> {
+      console.log("error while fetching the data for single person from db users");
+      sendTo(connection, { 
+         type: "error",
+         message: "User "+ personUserName +" doesn't exist!",
+      });
+   });
 
    console.log("sending details for " + connection.name);
    var finalResult1 = [];
@@ -452,8 +549,15 @@ function sendUserDetials(connection, personUserName)
          });
       }
    })
-   .catch(value=> console.log("error while fetching the data for single person from db users"));
-   
+   .catch(value=> 
+      {
+         //this catch should nevver execute
+         console.log("error while fetching the data for single person from db users");
+         sendTo(connection, { 
+            type: "error",
+            message: "User "+ personUserName +" doesn't exist!",
+         });
+      });
 }
 function sendTo(connection, message) { 
    connection.send(JSON.stringify(message)); 

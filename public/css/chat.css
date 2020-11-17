@@ -273,3 +273,21 @@ i.fa-image i.fa-file-alt {
 	margin-bottom: 15px !important;
 }
 }
+
+/* Make the badge float in the top right corner of the button */
+.button__badge {
+	background-color: #fa3e3e;
+	border-radius: 2px;
+	color: white;
+
+	padding: 1px 3px;
+	font-size: 10px;
+
+	position: absolute; /* Position the badge within the relatively positioned button */
+	top: 20;
+    right: 12;
+}
+
+.notificationButton:hover{
+	cursor: pointer;
+}

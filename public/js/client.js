@@ -82,14 +82,14 @@ connection.onmessage = function (message) {
       case "leaveVideo":
          handleLeaveVideo();
          break;
-      case "error":
-         handelError(message);
-         break;
       case "savedUser":
          createWindowsForSavedUsers(message);
          break;
       case "userDetails":
          userDetailsToMakeWindow(message, data.friends);
+         break;
+      case "error":
+         handelError(message);
          break;
       default: 
          break; 
@@ -98,8 +98,9 @@ connection.onmessage = function (message) {
 function handelError(message)
 {   
    let errorMessage = JSON.parse( message.data );
-   console.log(errorMessage.message); // add it as a red alert on connect to form window rather than alert
-   closeForm();
+   document.getElementById('addFriendErrorMessage').innerHTML = errorMessage.message;
+   //console.log(errorMessage.message); // add it as a red alert on connect to form window rather than alert
+   //closeForm();
 }
 //when a user logs in 
 function onLogin(success) { 
@@ -110,6 +111,21 @@ function onLogin(success) {
       createRTCPeerConnectionObject(name);
    } 
 };
+function ValidateEmail(inputText)
+{
+   var mailformat = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/;
+   if(inputText.match(mailformat))
+   {
+      //alert("Valid email address!");
+      //document.form1.text1.focus();
+      return true;
+   }
+   else
+   {
+      document.getElementById('addFriendErrorMessage').innerHTML = "Invalid email address!";
+      return false;
+   }
+}
 /*
    Messaging RTCPeerConnection
 */
@@ -154,6 +170,8 @@ function createRTCPeerConnectionObject (myName) {
 function createRTCPeerConnectionObjectForAudio(otherUsername, callback)
 {
    callPageAudio.style.display = "block";
+   var temp = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
+   document.getElementById('changeNameAudio').innerHTML = temp.personName;
    //getting local audio stream 
    navigator.webkitGetUserMedia({ video: false, audio: true }, function (myStream) { 
       //using Google public stun server 
@@ -270,70 +288,159 @@ function waitForSocketConnection(connection, callback){
          }
       }, 5); // wait 5 milisecond for the connection...
 }
+function pendingRequestsWindowInit()
+{
+   var pendingRequestWin = document.getElementById('pendingRequests');
+   $('#pendingRequests').empty();
+   var counter = 0;
+   console.log(connectionDictionary);
+   connectionDictionary.forEach(element => {
+      if(element.loginName != name){ 
+         if(!element.friend)
+         {
+            counter++;
+            var div1 = document.createElement("div");
+            div1.className = "row m-3";
+            var div2 = document.createElement("div");
+            div2.className = "col-6";
+            div2.style="align-self: center;"
+            var friendName = document.createElement("p");
+            friendName.className = "";
+            friendName.innerHTML = element.personName;
+            var div3 = document.createElement("div");
+            div3.className = "col-6";
+            var acceptButton = document.createElement("button");
+            acceptButton.className = "btn";
+            acceptButton.style = "background: #7F7FD5;";
+            acceptButton.innerHTML = "Accept";
+            acceptButton.onclick = function(event) {
+               console.log("make accept window");
+               element.friend = true;
+
+               //Saving this in db
+               otherUsername = element.loginName;
+               console.log(otherUsername);
+               if(otherUsername){
+                  send({ 
+                     type: "saveFriend", 
+                     personUserName: otherUsername 
+                  });
+               }
+               addMessagingWindowForParticularUser(element.loginName);
+               decrementNotificationCounter();
+               pendingRequestWin.removeChild(div1);
+               closeFriendRequestsPopup();
+             }
+             
+            //add accept button event listener, or just an onclick event
+            div3.appendChild(acceptButton);
+            div2.appendChild(friendName);
+            div1.appendChild(div2);
+            div1.appendChild(div3);
+            pendingRequestWin.appendChild(div1);
+         }
+      }
+   });
+
+   document.getElementById('pendingRequestNumber').innerHTML = counter;
+   if(counter == 0)
+   {
+      var div1 = document.createElement("p");
+      div1.className = "";
+      div1.innerHTML = "No Pending requests";
+      pendingRequestWin.appendChild(div1);
+   }
+}
+function incrementNotificationCounter()
+{
+    var value = parseInt(document.getElementById('pendingRequestNumber').innerHTML, 10);
+    value = isNaN(value) ? 0 : value;
+    value++;
+    document.getElementById('pendingRequestNumber').innerHTML = value;
+}
+function decrementNotificationCounter()
+{
+    var value = parseInt(document.getElementById('pendingRequestNumber').innerHTML, 10);
+    value = isNaN(value) ? 0 : value;
+    value--;
+    document.getElementById('pendingRequestNumber').innerHTML = value;
+}
 function userDetailsToMakeWindow(userInfo, friends)
 {
+   //this will have the friend list concept
    console.log("coming here in userDetailsToMakeWindow");
    var userInfo = JSON.parse(userInfo.data).message;
-
    console.log(userInfo);
-   console.log(userInfo[0].friendsName);
-   console.log(userInfo[0].friendsUid);
    if(userInfo != null){
-      //for(var i = 0; i < userInfo.length; i++) {
-         if(userInfo[0].friendsUserName != undefined){
-            var temp = connectionDictionary.find( ({ loginName }) => loginName === userInfo[0].friendsUserName);
-            if(!temp)
-            {
-               console.log("Adding to dictionary for " + userInfo[0].friendsUserName);
-               connectionDictionary.push({
-                  loginName: userInfo[0].friendsUserName,
-                  personName: userInfo[0].friendsName,
-                  uId: userInfo[0].friendsUid,
-                  friend: friends, //friends flag
-                  RTCDataChannel: "",
-                  RTCPeerConnectionAudio: "",
-                  RTCPeerConnectionVideo: ""
-               });
-            }
-            addMessagingWindowForParticularUser(userInfo[0].friendsUserName);
-            closeForm();
+      if(userInfo[0].friendsUserName != undefined){
+         var temp = connectionDictionary.find( ({ loginName }) => loginName === userInfo[0].friendsUserName);
+         console.log(temp);
+         if(!temp)
+         {
+            console.log("Adding to dictionary for " + userInfo[0].friendsUserName);
+            console.log(friends);
+            connectionDictionary.push({
+               loginName: userInfo[0].friendsUserName,
+               personName: userInfo[0].friendsName,
+               uId: userInfo[0].friendsUid,
+               friend: friends, //friends flag
+               RTCDataChannel: "",
+               RTCPeerConnectionAudio: "",
+               RTCPeerConnectionVideo: ""
+            });
          }
-      //}
+         else
+         {
+            console.log("exists in dictionary");
+         }
+         if(friends)
+            addMessagingWindowForParticularUser(userInfo[0].friendsUserName);
+         else{
+            incrementNotificationCounter();
+            pendingRequestsWindowInit();
+         }
+         closeForm();
+      }
    }
    else
       console.log("No friends");
 }
 //setup a peer connection with another user 
 function establishConnection(otherUsername) {
-   if(name==otherUsername){
-      alert("Cannot establish connection to yourself");
-      return;
-   }
-   else if(connectionDictionary.find(({ loginName }) => loginName === otherUsername))
-   {
-      otherUser = connectionDictionary.find(({ loginName }) => loginName === otherUsername)
-      myChatId = "chatOutput_" + otherUser.uId;
-      myNameChatId = "myLi_" + otherUser.uId;
-      element = document.getElementById(myChatId);
-      if (typeof(element) != 'undefined' && element != null) //the window already exists, so don't make new window
-      {
-         // Exists.
-         alert("Connection already exists");
+   if(ValidateEmail(otherUsername)){
+      if(name==otherUsername){
+         alert("Cannot establish connection to yourself");
          closeForm();
-         document.getElementById(myNameChatId).click();
          return;
       }
-   }
-   else{
-      connectedUser = otherUsername;
-      //need to get required data from server and then add it in the dictionary
-      console.log(connectedUser);
-      send({ 
-         type: "getUserDetails", 
-         personUserName: connectedUser 
-      });
-      //below function will be called from userDetailsToMakeWindow
-      //addMessagingWindowForParticularUser(connectedUser);
+      else if(connectionDictionary.find(({ loginName }) => loginName === otherUsername))
+      {
+         otherUser = connectionDictionary.find(({ loginName }) => loginName === otherUsername)
+         myChatId = "chatOutput_" + otherUser.uId;
+         myNameChatId = "myLi_" + otherUser.uId;
+         element = document.getElementById(myChatId);
+         if (typeof(element) != 'undefined' && element != null) //the window already exists, so don't make new window
+         {
+            // Exists.
+            alert("Connection already exists");
+            closeForm();
+            document.getElementById(myNameChatId).click();
+            return;
+         }
+      }
+      else{
+         connectedUser = otherUsername;
+         //need to get required data from server and then add it in the dictionary
+         console.log(connectedUser);
+         if(connectedUser){
+            send({ 
+               type: "getUserDetails", 
+               personUserName: connectedUser 
+            });
+         }
+         //below function will be called from userDetailsToMakeWindow
+         //addMessagingWindowForParticularUser(connectedUser);
+      }
    }
 }
 function createOfferToPeer(otherUsername)
@@ -353,6 +460,7 @@ function createOfferToPeer(otherUsername)
    });
 }
 function openForm() {
+   document.getElementById('addFriendErrorMessage').innerHTML = "";
   document.getElementById("loginPopup").style.display="block";
   document.getElementById("otherUsernameInput").focus();
 }
@@ -361,11 +469,21 @@ function closeForm() {
    document.getElementById("otherUsernameInput").value="";
   document.getElementById("loginPopup").style.display= "none";
 }
+function openFriendRequestsPopup()
+{
+   document.getElementById('friendRequestPopup').style.display = "block";
+}
+function closeFriendRequestsPopup()
+{
+   document.getElementById('friendRequestPopup').style.display = "none";
+}
 // When the user clicks anywhere outside of the modal, close it
 window.onclick = function(event) {
   var modal = document.getElementById('loginPopup');
-  if (event.target == modal) {
+  var modal1 = document.getElementById('friendRequestPopup');
+  if (event.target == modal || event.target == modal1 ){
     closeForm();
+    closeFriendRequestsPopup();
   }
 }
 
@@ -436,22 +554,14 @@ function onOfferAudio(offer, otherusername) {
 //when another user answers to our offer 
 function onAnswer(answer, personName1, uId1) {
    myRTCPeerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-   //save the personName and uId to the correspondind connectedUser
-   //What is connected user ?
-   //var temp = connectionDictionary.find( ({ loginName }) => loginName === connectedUser);
-   //temp.personName = personName1;
-   //temp.uId = uId1;
-   //temp.friend = "true";
    closeForm();
 }
 //when another user answers to our offer 
 function onAnswerVideo(answer, personName1, uId1) {
-   console.log("getting video answers");
    myRTCPeerConnectionVideo.setRemoteDescription(new RTCSessionDescription(answer));
 }
 //when another user answers to our offer 
 function onAnswerAudio(answer, personName1, uId1) {
-   console.log("getting audio answers");
    myRTCPeerConnectionAudio.setRemoteDescription(new RTCSessionDescription(answer));
 }
 //when we got ice candidate from another user 
@@ -1093,9 +1203,6 @@ function initialiseEmojis() {
 }
 function createWindowsForSavedUsers(friendList)
 {
-   console.log("createWindowsForSavedUsers called");
-   //retrieveDataFromSessionStorage();
-   //console.log(JSON.parse(friendList.data));
    var myFriendList = JSON.parse(friendList.data).message;
 
    if(myFriendList != null){
@@ -1109,16 +1216,20 @@ function createWindowsForSavedUsers(friendList)
                   loginName: myFriendList[i].friendsUserName,
                   personName: myFriendList[i].friendsName,
                   uId: myFriendList[i].friendsUid,
-                  friend: true,
+                  friend: myFriendList[i].friendsFlag,
                   RTCDataChannel: "",
                   RTCPeerConnectionAudio: "",
                   RTCPeerConnectionVideo: ""
                });
             }
-            addMessagingWindowForParticularUser(myFriendList[i].friendsUserName);
+            if(myFriendList[i].friendsFlag)
+               addMessagingWindowForParticularUser(myFriendList[i].friendsUserName);
          }
       }
    }
    else
       console.log("No friends");
+   
+   //initialising pending request window
+   pendingRequestsWindowInit();
 }
