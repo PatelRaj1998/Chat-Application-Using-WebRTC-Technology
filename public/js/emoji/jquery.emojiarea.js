@@ -352,8 +352,9 @@
     
     this.$editor.on("keyup", function(event) {
       if (event.keyCode === 13) {
+        //console.log(oldId);
         event.preventDefault();
-        var tempId = '#sendMsg_' + oldId;
+        var tempId = '#sendMsg_' + $(this).data("custom-value");
         $(tempId).click();
         //making input null
         //this.innerHTML=""; //doing this from sendMsg click
@@ -363,7 +364,8 @@
       'data-id': id,
       'data-type': 'input',
       'placeholder': $textarea.attr('placeholder'),
-      'contenteditable': 'true'
+      'contenteditable': 'true',
+      'data-custom-value': oldId
     });
 
     /*

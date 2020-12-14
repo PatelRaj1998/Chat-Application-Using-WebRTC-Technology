@@ -53,6 +53,7 @@ wss.on('connection', function(connection) {
                   type: "login", 
                   success: true 
                });
+               sendUserInfo(connection);
                sendUserFriendList(connection);
             } 
         
@@ -306,7 +307,7 @@ wss.on('connection', function(connection) {
         
             break; 
       }  
-   });  
+   });
   
    //when user exits, for example closes a browser window 
    //this may help if we are still in "offer","answer" or "candidate" state 
@@ -404,32 +405,35 @@ function saveFriendIfNew(connectionName, otherUserName, friendFlag)
       }
    })
 }
-function changeFriendFlag(connectionName, otherUserName, friend)
+function sendUserInfo(connection)
 {
-   FriendsList.findOne({userName : connectionName}).exec((err,friendListExists)=>{
-      //console.log("friendListExists: " + friendListExists);
-      if(friendListExists) //if the FriendsList exists, then replace it into that FriendsList
-      {
-         console.log(friendListExists);
-         //save in db
-         FriendsList.update(
-            {userName: connectionName},
-            {$set: {friends : {friendsUserName:otherUserName, friend: friend}}} //saving if unique by addToSet
-         )
-         .then((value)=>{
-            //console.log("Successfully updated. check the friendList in db");
-         })
-         .catch(value=> console.log("Error while adding a friend to db"));
+   console.log("sending details for " + connection.name);
+   var finalResult = [];
+   Users.find({email: connection.name})
+   .then((result) =>{
+      //save the result into finalResult
+      //console.log(result[0].email);
+      var myObj = {
+         "myUserName": connection.name, 
+         "myName": result[0].name, 
+         "myUid": result[0].uniqueId
+      };
+      finalResult.push(myObj);
+      if(connection != null) { 
+
+         sendTo(connection, { 
+            type: "myDetails",
+            message: finalResult,
+         });
       }
    })
-}
-function replaceByValue( field, oldvalue, newvalue ) {
-   for( var k = 0; k < json.length; ++k ) {
-       if( oldvalue == json[k][field] ) {
-           json[k][field] = newvalue ;
-       }
-   }
-   return json;
+   .catch(value=> {
+      console.log("error while fetching the data for single person from db users");
+      sendTo(connection, { 
+         type: "error",
+         message: "User "+ connection.name +" doesn't exist!",
+      });
+   });
 }
 function sendUserFriendList(connection)
 {

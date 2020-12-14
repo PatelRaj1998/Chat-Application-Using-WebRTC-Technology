@@ -88,6 +88,9 @@ connection.onmessage = function (message) {
       case "userDetails":
          userDetailsToMakeWindow(message, data.friends);
          break;
+      case "myDetails":
+         myDetailsInit(message);
+         break;
       case "error":
          handelError(message);
          break;
@@ -141,6 +144,7 @@ function createRTCPeerConnectionObject (myName) {
   
    connectedUser = myName;
 
+   /*
    connectionDictionary.push({
       loginName: myName,
       personName: "",
@@ -150,7 +154,8 @@ function createRTCPeerConnectionObject (myName) {
       RTCPeerConnectionAudio: "",
       RTCPeerConnectionVideo: ""
    });
-   
+   */
+
    //setup ice handling 
    //when the browser finds an ice candidate we send it to another peer 
    myRTCPeerConnection.onicecandidate = function (event) {
@@ -173,7 +178,7 @@ function createRTCPeerConnectionObjectForAudio(otherUsername, callback)
    var temp = connectionDictionary.find( ({ loginName }) => loginName === otherUsername);
    document.getElementById('changeNameAudio').innerHTML = temp.personName;
    //getting local audio stream 
-   navigator.webkitGetUserMedia({ video: false, audio: true }, function (myStream) { 
+   navigator.webkitGetUserMedia({ video: false, audio: true, audio: {'echoCancellation': true} }, function (myStream) { 
       //using Google public stun server 
       var configuration = { 
          "iceServers": [{ "url": "stun:stun2.1.google.com:19302" }] 
@@ -213,8 +218,9 @@ function createRTCPeerConnectionObjectForAudio(otherUsername, callback)
 function createRTCPeerConnectionObjectForVideo(otherUsername, callback)
 {
    callPageVideo.style.display = "block";
-   //getting local video stream 
-   navigator.webkitGetUserMedia({ video: true, audio: true }, function (myStream) {
+   //getting local video stream
+   navigator.webkitGetUserMedia({ video: true, audio: true, audio: {'echoCancellation': true} }, function (myStream) {
+      console.log("good");
       //using Google public stun server 
       var configuration = { 
          "iceServers": [{ "url": "stun:stun2.1.google.com:19302" }]
@@ -378,7 +384,6 @@ function userDetailsToMakeWindow(userInfo, friends)
          if(!temp)
          {
             console.log("Adding to dictionary for " + userInfo[0].friendsUserName);
-            console.log(friends);
             connectionDictionary.push({
                loginName: userInfo[0].friendsUserName,
                personName: userInfo[0].friendsName,
@@ -404,6 +409,41 @@ function userDetailsToMakeWindow(userInfo, friends)
    }
    else
       console.log("No friends");
+}
+function myDetailsInit(userInfo)
+{
+   //this will have the friend list concept
+   console.log("coming here in myDetailsToMakeWindow");
+   var userInfo = JSON.parse(userInfo.data).message;
+   console.log(userInfo);
+   if(userInfo != null){
+      if(userInfo[0].myUserName != undefined){
+         var temp = connectionDictionary.find( ({ loginName }) => loginName === userInfo[0].myUserName);
+         console.log(temp);
+         if(!temp)
+         {
+            console.log("Adding to dictionary for " + userInfo[0].myUserName);
+            connectionDictionary.push({
+               loginName: userInfo[0].myUserName,
+               personName: userInfo[0].myName,
+               uId: userInfo[0].myUid,
+               friend: "",
+               RTCDataChannel: "",
+               RTCPeerConnectionAudio: "",
+               RTCPeerConnectionVideo: ""
+            });
+            var imgLink = "/img/profilePics/m_" + userInfo[0].myUid + ".png";
+            document.getElementById("myPhoto").src = imgLink; 
+            console.log(connectionDictionary);
+         }
+         else
+         {
+            console.log("exists in dictionary");
+         }
+      }
+   }
+   else
+      console.log("No info sent from user");
 }
 //setup a peer connection with another user 
 function establishConnection(otherUsername) {
@@ -989,8 +1029,6 @@ function sendFileToPeer(otherUsername)
        //sendChannel.send(file.target.result);
          if(!dataChannel)
          {
-            console.log("one");
-            console.log("Creating offer to peer");
             createOfferToPeer(otherUsername);
             dataChannel = connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel;
             waitForDataChannelToOpen(dataChannel, function(){
@@ -999,13 +1037,10 @@ function sendFileToPeer(otherUsername)
             });
          }
          else{
-            console.log("two");
             try{
-               console.log("three");
                dataChannel.send(file.target.result);
             }
             catch{
-               console.log("four");
                connectionDictionary.find(({ loginName }) => loginName === otherUsername).RTCDataChannel="";
                sendMessageToPeer(otherUsername, file.target.result);
             }
@@ -1033,7 +1068,6 @@ function waitForDataChannelToOpen(dataChannel, callback){
 
 function storeMessageOnServer(msgInput, alignValue1, otherUsername)
 {
-   //console.log(otherUsername);
    var tempUsername;
    if(alignValue1 == "left")
    {
@@ -1096,7 +1130,6 @@ function addMessagingWindowForParticularUser(otherUsername){
    if(otherUser == null)
       console.log("first save the data");
    var element = document.getElementById("myLi_" + otherUser.uId);
-   //console.log("otherUser.uId: " + otherUser.uId);
     //If it isn't "undefined" and it isn't "null", then it exists.
     if(typeof(element) != 'undefined' && element != null){
        console.log("Window already exists");
@@ -1183,6 +1216,7 @@ function handleLeaveVideo() {
       console.log("stop video");
       videoStream.stop();
     }
+   videoStream.srcObject = null;
    videoStream = null;
    myRTCPeerConnectionVideo.close();
    myRTCPeerConnectionVideo.onicecandidate = null; 
